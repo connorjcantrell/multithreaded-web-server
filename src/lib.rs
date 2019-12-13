@@ -3,119 +3,113 @@ use std::sync::mpsc;
 use std::sync::Mutex;
 use std::sync::Arc;
 
+/// A thread pool is a group of spawned threads that are waiting and ready to handle a task. When the program receives a new task, it assigns one of the threads in the pool to the task, and that thread will process the task. The remaining threads in the pool are available to handle any other tasks that come in while the first thread is processing.
 pub struct ThreadPool {
+    // Each worker holds on to the receiving side of the channel
     workers: Vec<Worker>,
+    // holds on to the sending side of the channel
     sender: mpsc::Sender<Message>,
 }
 
 impl ThreadPool {
+    /// Create a new ThreadPool with a configurable number of threads
+    ///
+    /// The size is the number of threads in the pool.
+    ///
+    /// # Panics
+    ///
+    /// The `new` function will panic if the size is zero
     pub fn new(size: usize) -> ThreadPool {
         assert!(size > 0);
-        // Create new channel and destructure sender and receiver
         let (sender, receiver) = mpsc::channel();
 
-        // Create one receiving end
         let receiver = Arc::new(Mutex::new(receiver));
 
-        // Set thread capacity, to avoid overloading the server
         let mut workers = Vec::with_capacity(size);
 
-        // Push `workers` onto empty vector
         for id in 0..size {
-            // Every `Worker` atomically references `receiver`, but also has it's own unique `id`
             workers.push(Worker::new(id, Arc::clone(&receiver)));
         }
 
         ThreadPool {
             workers,
-            // Closures are stored in sender, waiting to be executed
             sender,
         }
     }
-
+    /// `execute` takes a closure it’s given and gives it to an idle thread in the pool to run
+    /// 
+    /// execute method will send the job it wants to execute down the sending side of the channel.
     pub fn execute<F>(&self, f: F)
         where
             F: FnOnce() + Send + 'static
     {
         let job = Box::new(f);
         
-        // Needs to send jobs wrapped in a Message::NewJob variant
         self.sender.send(Message::NewJob(job)).unwrap();
     }
 }
 
+/// Drop trait to call join on each of the threads in the pool so they can finish the requests they’re working on before closing.\
+/// 
+/// /// Joining each thread when the thread pool goes out of scope
 impl Drop for ThreadPool {
     fn drop(&mut self) {
         println!("Sending terminate message to all workers.");
 
         for _ in &mut self.workers {
-            // Send one Terminate message for each worker
             self.sender.send(Message::Terminate).unwrap();
         }
 
         println!("Shutting down all workers.");
 
-        // loop through the thread pool 
-        for worker in &mut self.workers {  // Must use &mut because self is a mutable reference and we need to mutate `worker`
+        for worker in &mut self.workers { 
             println!("Shutting down worker {}", worker.id);
             
-            // We're using `if let` to destructure the `Some` and get the thread
-            // All workers currently have the Terminate message
             if let Some(thread) = worker.thread.take() {
-                // Call join on the thread
                 thread.join().unwrap();
             }
         }
     }
 }
 
-// Similar to Fn* traits except that it takes self: Box<Self> to take ownership of self
+/// Adds the ability to call the closure inside Box
 trait FnBox {
     fn call_box(self: Box<Self>);
 }
 
-// F implementst the FnOnce trait, which allows any FnOnce() closures to use our `call_box` method
+/// This means that any FnOnce() closures can use our call_box method
 impl<F: FnOnce()> FnBox for F {
-    /// Take ownership of self and move the value out of Box<T>
+    /// call_box uses (*self)() to move the closure out of the Box<T> and call the closure
     fn call_box(self: Box<F>) {
-        // move the closure out of the Box<F> and call the closure
         (*self)()
     }
 }
 
-// A `Box` of anything that implements the `FnBox` trait
-// This allows us to use `call_box` in `Worker` when we get the `Job` value instead of invoking the closure directly
+/// Type alias for a trait object that holds the type of closure that execute receives
 type Job = Box<dyn FnBox + Send + 'static>;
 
-
+/// A Worker Struct is responsible for sending code from the ThreadPool to a Thread
+/// 
+/// The id is a unique number to distinguish between threads
+/// 
+/// The thread stores a single JoinHandle() instance wrapped in an Option enum 
 struct Worker {
     id: usize,
-    // By storing the thread inside an Option enum, we can take ownership of the thread (See impl Drop for ThreadPool)
-    // JoinHandle<()> is an owned permission to join on a thread (block on its termination) 
     thread: Option<thread::JoinHandle<()>>,
 }
 
 impl Worker {
-    // Contains a r
+    /// Worker will loop over its receiving side of the channel and execute the closures of any jobs it receives
     fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Message>>>) -> Worker {
-        // Created by spawning a new thread using an empty closure
         let thread = thread::spawn(move || {
             loop {
-                // Call lock on the message to acquire the mutex
-                // Call unwrap to panic on any errors
-                // Call recv to receive the Job from the channel
-                // Call unwrap to panic on any errors
                 let message = receiver.lock().unwrap().recv().unwrap();
 
                 match message {
-                    // Message is received by the channel
                     Message::NewJob(job) => {
                         println!("Worker {} got a job; executing.", id);
-                        
-                        // Dereference the value inside of Box
                         job.call_box();
                     },
-                    // Break out of the loop
                     Message::Terminate => {
                         println!("Worker {} was told to terminate.", id);
                         break;
@@ -131,6 +125,8 @@ impl Worker {
     }
 }
 
+/// This Message enum will either be a NewJob variant that holds the Job the thread should run, or it will be a Terminate
+/// variant that will cause the thread to exit its loop and stop.
 enum Message {
     NewJob(Job),
     Terminate,
