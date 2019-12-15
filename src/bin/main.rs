@@ -1,5 +1,6 @@
-use hello::server::run;
+extern crate hello;
+use hello::server;
 
 fn main() {
-    run();
+    server::run();
 }
