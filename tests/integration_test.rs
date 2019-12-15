@@ -1,11 +1,12 @@
 use hello::thread_pool::ThreadPool;
-use hello::server::handle_connection;
-use reqwest;
+use hello::server;
+use std::net::TcpListener;
+// use reqwest;
 
 
 #[test]
-fn main_test() {
-    // use reqwest crate to simulate a client
+fn graceful_shutdown() {
+    // use reqwest hello to simulate a client
     let listener = TcpListener::bind("127.0.0.1:7878").unwrap();
     let pool = ThreadPool::new(4);
 
@@ -13,7 +14,7 @@ fn main_test() {
         let stream = stream.unwrap();
 
         pool.execute(|| {
-            handle_connection(stream);
+            server::handle_connection(stream);
         });
     }
 

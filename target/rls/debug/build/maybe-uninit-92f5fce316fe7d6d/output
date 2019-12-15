@@ -1,0 +1,2 @@
+cargo:rustc-cfg=derive_copy
+cargo:rustc-cfg=repr_transparent

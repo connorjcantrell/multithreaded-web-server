@@ -4,7 +4,7 @@ use std::fs;
 use crate::thread_pool::ThreadPool;
 
 
-fn handle_connection(mut stream: TcpStream) {
+pub fn handle_connection(mut stream: TcpStream) {
     let mut buffer = [0; 512];
     stream.read(&mut buffer).unwrap();
     
