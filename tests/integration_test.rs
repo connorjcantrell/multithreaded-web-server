@@ -9,10 +9,10 @@ use reqwest;
 #[test]
 fn simulate() {
     thread::spawn(move || {
-        graceful_shutdown()
+        graceful_shutdown();
     });
 
-    thread::spawn(move || {
+    let client_result = thread::spawn(move || {
         let client = reqwest::Client::new();
         client.get("127.0.0.1:7878");
         client.get("127.0.0.1:7878");
@@ -20,16 +20,16 @@ fn simulate() {
 }
 
 fn graceful_shutdown() {
-    // Simulate client with reqwest
     let listener = TcpListener::bind("127.0.0.1:7878").unwrap();
     let pool = ThreadPool::new(4);
-
+    let mut counter = 0;
     for stream in listener.incoming().take(2) {
         let stream = stream.unwrap();
 
-        pool.execute(|| {
+        let handle = pool.execute(|| {
             server::handle_connection(stream);
         });
+        counter += handle.join().unwrap();
     }
     println!("Shutting down.");
 }

@@ -52,7 +52,7 @@ impl ThreadPool {
 
 /// Drop trait to call join on each of the threads in the pool so they can finish the requests they’re working on before closing.\
 /// 
-/// /// Joining each thread when the thread pool goes out of scope
+/// Joining each thread when the thread pool goes out of scope
 impl Drop for ThreadPool {
     fn drop(&mut self) {
         println!("Sending terminate message to all workers.");
@@ -131,4 +131,14 @@ impl Worker {
 enum Message {
     NewJob(Job),
     Terminate,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn thread_pool_size() {
+        let tp = ThreadPool::new(4);
+        assert_eq!(tp.workers.len(), 4);
+    }
 }
